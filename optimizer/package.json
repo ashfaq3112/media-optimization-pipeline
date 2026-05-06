@@ -1,6 +1,12 @@
 {
-  "name": "optimizer",
+  "name": "media-optimizer",
   "version": "1.0.0",
-  "description": "Core optimization engine",
-  "dependencies": {}
+  "description": "Core engine to compress and convert images to WebP",
+  "main": "optimize.js",
+  "scripts": {
+    "start": "node optimize.js"
+  },
+  "dependencies": {
+    "sharp": "^0.32.6"
+  }
 }
