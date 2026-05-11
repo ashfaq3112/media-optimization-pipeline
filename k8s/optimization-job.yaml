@@ -15,7 +15,7 @@ spec:
         # This tells K8s to use your local Docker image
         imagePullPolicy: Never 
         volumeMounts:
-        - name: asset-volumekubectl logs job/media-optimizer-job
+        - name: asset-volume
           mountPath: /sample-assets
       volumes:
       - name: asset-volume
