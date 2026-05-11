@@ -1,6 +1,6 @@
 name: Media Optimization Pipeline
 
-# 1. THE TRIGGER: Only run when a PR is opened AND it contains images
+# 1. THE TRIGGER: Only runs when images are added/changed in a PR
 on:
   pull_request:
     paths:
@@ -10,29 +10,43 @@ on:
 
 jobs:
   optimize-assets:
-    # THIS IS THE MAGIC WORD TO USE YOUR LAPTOP
+    # Uses your local Ubuntu laptop/runner
     runs-on: self-hosted 
     
     steps:
-      # Step 1: Download the code from the Pull Request
+      # Step 1: Download the code from the Pull Request branch
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # (We skipped the Azure K8s login step because your local runner already has access to Minikube!)
-
-      # Step 2: Press the "Start" Button Automatically
+      # Step 2: Deploy the Job to Minikube
       - name: Deploy Kubernetes Job
         run: |
           echo "🚀 Triggering Media Optimization Job in Kubernetes..."
+          # Safety: Delete any old job that didn't clean up properly
+          kubectl delete job media-optimizer-job --ignore-not-found
           kubectl apply -f k8s/optimization-job.yaml
 
-      # Step 3: Wait for the job to finish and print the receipt
+      # Step 3: The Auditor - This catches "Silent Failures"
       - name: Wait for Job Completion & Print Logs
         run: |
+          echo "⏳ Waiting for job to finish..."
           kubectl wait --for=condition=complete --timeout=120s job/media-optimizer-job
-          echo "📊 PIPELINE RESULTS:"
-          kubectl logs job/media-optimizer-job
           
-      # Step 4: Clean up the K8s cluster for the next time
+          echo "📊 CAPTURING LOGS..."
+          # Store logs in a variable to check for errors
+          JOB_LOGS=$(kubectl logs job/media-optimizer-job)
+          echo "$JOB_LOGS"
+          
+          # If the logs contain the word 'Failed', manually kill the pipeline
+          if echo "$JOB_LOGS" | grep -q "Failed"; then
+            echo "❌ CRITICAL ERROR: Corrupted or invalid images detected in logs."
+            echo "Blocking merge to protect repository integrity."
+            exit 1
+          fi
+
+      # Step 4: Cleanup (Runs even if Step 3 fails!)
       - name: Delete Job
-        run: kubectl delete job media-optimizer-job
+        if: always()
+        run: |
+          echo "🧹 Cleaning up Kubernetes resources..."
+          kubectl delete job media-optimizer-job
