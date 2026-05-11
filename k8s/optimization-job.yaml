@@ -1,4 +1,4 @@
-apiVersion: batch/v99
+apiVersion: batch/v1
 kind: Job
 metadata:
   name: media-optimizer-job
