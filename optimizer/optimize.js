@@ -2,59 +2,88 @@ const sharp = require('sharp');
 const fs = require('fs');
 const path = require('path');
 
-// Hardcoding paths for local testing (we will make these dynamic later for CI/CD)
-const inputDir = path.join(__dirname, '../sample-assets');
-const outputDir = path.join(__dirname, '../sample-assets/optimized');
+// Root of your project (current directory)
+const projectRoot = path.join(__dirname, '../'); 
+const extensionsToOptimize = ['.jpg', '.jpeg', '.png'];
+const codeExtensions = ['.html', '.css', '.js', '.jsx', '.tsx', '.vue'];
 
-// Create output directory if it doesn't exist
-if (!fs.existsSync(outputDir)) {
-    fs.mkdirSync(outputDir, { recursive: true });
+// Helper: Find all files recursively
+function getAllFiles(dirPath, arrayOfFiles = []) {
+    const files = fs.readdirSync(dirPath);
+
+    files.forEach(file => {
+        const fullPath = path.join(dirPath, file);
+        // Skip node_modules and .git folders
+        if (file === 'node_modules' || file === '.git' || file === 'actions-runner') return;
+
+        if (fs.statSync(fullPath).isDirectory()) {
+            arrayOfFiles = getAllFiles(fullPath, arrayOfFiles);
+        } else {
+            arrayOfFiles.push(fullPath);
+        }
+    });
+
+    return arrayOfFiles;
 }
 
-async function processImages() {
-    console.log('🚀 Starting Media Optimization Pipeline...\n');
-    let totalOriginalSize = 0;
-    let totalNewSize = 0;
+async function runGlobalOptimization() {
+    console.log('🚀 Scanning entire project for media assets...\n');
+    
+    const allFiles = getAllFiles(projectRoot);
+    const images = allFiles.filter(file => extensionsToOptimize.includes(path.extname(file).toLowerCase()));
+    const sourceFiles = allFiles.filter(file => codeExtensions.includes(path.extname(file).toLowerCase()));
 
-    const files = fs.readdirSync(inputDir);
+    let totalSaved = 0;
 
-    for (const file of files) {
-        // Only process .jpg, .jpeg, and .png files
-        if (file.match(/\.(jpg|jpeg|png)$/i)) {
-            const inputPath = path.join(inputDir, file);
-            const outputPath = path.join(outputDir, file.replace(/\.[^/.]+$/, ".webp"));
+    // 1. PROCESS AND DELETE IMAGES
+    for (const imagePath of images) {
+        const ext = path.extname(imagePath);
+        const outputPath = imagePath.replace(ext, '.webp');
 
-            const stats = fs.statSync(inputPath);
-            const originalSizeMB = (stats.size / (1024 * 1024)).toFixed(2);
-            totalOriginalSize += stats.size;
+        try {
+            const originalStats = fs.statSync(imagePath);
+            
+            await sharp(imagePath)
+                .resize({ width: 1920, withoutEnlargement: true })
+                .webp({ quality: 80 })
+                .toFile(outputPath);
 
-            try {
-                // The actual optimization process
-                await sharp(inputPath)
-                    .resize({ width: 1920, withoutEnlargement: true }) // Max width 1920px
-                    .webp({ quality: 80 }) // Convert to WebP at 80% quality
-                    .toFile(outputPath);
+            const optimizedStats = fs.statSync(outputPath);
+            totalSaved += (originalStats.size - optimizedStats.size);
 
-                const newStats = fs.statSync(outputPath);
-                const newSizeMB = (newStats.size / (1024 * 1024)).toFixed(2);
-                totalNewSize += newStats.size;
-
-                console.log(`✅ Processed: ${file}`);
-                console.log(`   - Original: ${originalSizeMB} MB`);
-                console.log(`   - Optimized: ${newSizeMB} MB`);
-                console.log(`   - Saved: ${((1 - (newStats.size / stats.size)) * 100).toFixed(1)}%\n`);
-
-            } catch (error) {
-                console.error(`❌ Failed to process ${file}:`, error.message);
-            }
+            // DELETE the original image
+            fs.unlinkSync(imagePath);
+            
+            console.log(`✅ Optimized & Replaced: ${path.basename(imagePath)} -> .webp`);
+        } catch (err) {
+            console.error(`❌ Error processing ${imagePath}:`, err.message);
         }
     }
 
-    // Final Report
-    const savedMB = ((totalOriginalSize - totalNewSize) / (1024 * 1024)).toFixed(2);
-    console.log('📊 --- PIPELINE SUMMARY ---');
-    console.log(`Total Space Saved: ${savedMB} MB`);
-    console.log('---------------------------\n');
+    // 2. UPDATE CODE REFERENCES
+    console.log('\n📝 Updating image references in source code...');
+    for (const sourceFile of sourceFiles) {
+        let content = fs.readFileSync(sourceFile, 'utf8');
+        let updated = false;
+
+        extensionsToOptimize.forEach(ext => {
+            // Regex to find "filename.png" and change to "filename.webp"
+            const regex = new RegExp(ext.replace('.', '\\.'), 'gi');
+            if (regex.test(content)) {
+                content = content.replace(regex, '.webp');
+                updated = true;
+            }
+        });
+
+        if (updated) {
+            fs.writeFileSync(sourceFile, content);
+            console.log(`   ✨ Updated refs in: ${path.relative(projectRoot, sourceFile)}`);
+        }
+    }
+
+    console.log('\n📊 --- FINAL REPORT ---');
+    console.log(`Total Storage Saved: ${(totalSaved / (1024 * 1024)).toFixed(2)} MB`);
+    console.log('Pipeline complete. All code references updated.\n');
 }
 
-processImages();
+runGlobalOptimization();
