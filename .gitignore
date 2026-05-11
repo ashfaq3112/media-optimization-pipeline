@@ -1,3 +1,5 @@
 node_modules/
 .env
 minikube-linux-amd64
+actions-runner/
+actions-runner/
