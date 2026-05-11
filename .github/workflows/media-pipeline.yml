@@ -10,34 +10,29 @@ on:
 
 jobs:
   optimize-assets:
-    runs-on: ubuntu-latest
+    # THIS IS THE MAGIC WORD TO USE YOUR LAPTOP
+    runs-on: self-hosted 
     
     steps:
       # Step 1: Download the code from the Pull Request
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      # Step 2: Connect to the Kubernetes Cluster (The "Remote Control")
-      # In the real world, you store your K8s credentials securely in GitHub Secrets
-      - name: Configure Kubernetes Credentials
-        uses: azure/k8s-set-context@v3
-        with:
-          method: kubeconfig
-          kubeconfig: ${{ secrets.KUBECONFIG_DATA }}
+      # (We skipped the Azure K8s login step because your local runner already has access to Minikube!)
 
-      # Step 3: Press the "Start" Button Automatically
+      # Step 2: Press the "Start" Button Automatically
       - name: Deploy Kubernetes Job
         run: |
           echo "🚀 Triggering Media Optimization Job in Kubernetes..."
           kubectl apply -f k8s/optimization-job.yaml
 
-      # Step 4: Wait for the job to finish and print the receipt
+      # Step 3: Wait for the job to finish and print the receipt
       - name: Wait for Job Completion & Print Logs
         run: |
           kubectl wait --for=condition=complete --timeout=120s job/media-optimizer-job
           echo "📊 PIPELINE RESULTS:"
           kubectl logs job/media-optimizer-job
           
-      # Step 5: Clean up the K8s cluster for the next time
+      # Step 4: Clean up the K8s cluster for the next time
       - name: Delete Job
         run: kubectl delete job media-optimizer-job
