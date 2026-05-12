@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
 
   trigger-optimizer:
@@ -86,7 +90,7 @@ jobs:
           else {
             git commit -m "auto optimize images to webp"
 
-            git push origin HEAD:${{ github.head_ref }}
+            git push
 
             Write-Host "Optimized assets pushed successfully"
           }
