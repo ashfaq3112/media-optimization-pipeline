@@ -2,25 +2,27 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: media-optimizer-job
-  labels:
-    app: media-optimizer
 spec:
-  # How many retries if the job fails
-  backoffLimit: 2 
+  backoffLimit: 0 # We want it to fail fast if there's a code error
   template:
     spec:
       containers:
       - name: media-optimizer-container
         image: media-optimizer:latest
-        # This tells K8s to use your local Docker image
         imagePullPolicy: Never 
+        env:
+          - name: PR_NUMBER
+            value: "${PR_NUMBER}" # Injected by GitHub Actions
+          - name: MONGO_URI
+            value: "mongodb://mongodb-service:27017/media-db"
         volumeMounts:
-        - name: asset-volume
-          mountPath: /sample-assets
+        - name: project-root
+          # MUST be /app to match your optimize.js script
+          mountPath: /app 
       volumes:
-      - name: asset-volume
+      - name: project-root
         hostPath:
-          # THIS IS THE FIX: We use the bridge path now!
-          path: /sample-assets
+          # Use the absolute path to your repo on your Ubuntu laptop
+          path: /home/nadeem/msrit/media-optimization-pipeline 
           type: Directory
       restartPolicy: Never
