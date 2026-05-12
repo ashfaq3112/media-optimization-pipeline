@@ -1,18 +1,23 @@
 require('dotenv').config();
 const path = require('path');
-const fs = require('fs');
 const { performance } = require('perf_hooks');
 
 const connectDB = require('./db');
 const PRLog = require('./models/PRLog');
-const changedFilesUtil = require('./utils/changedFiles');
-const optimizeImages = require('./utils/optimizeImages');
+const { scanAssets, DEFAULT_ASSET_PATHS } = require('./utils/scanAssets');
+const { processImage } = require('./utils/optimizeImages');
 const replaceReferences = require('./utils/replaceReferences');
 const calculateStats = require('./utils/calculateStats');
-const gitHelper = require('./gitHelper');
-const commentPR = require('./commentPR');
 
 const PROJECT_ROOT = process.env.WORKSPACE_PATH || '/workspace';
+const ASSET_FOLDERS = process.env.ASSET_FOLDERS
+  ? process.env.ASSET_FOLDERS.split(',').map(folder => folder.trim()).filter(Boolean)
+  : DEFAULT_ASSET_PATHS;
+const CODE_FILE_EXTENSIONS = ['.html', '.css', '.js', '.jsx', '.tsx', '.vue'];
+
+function formatBytes(bytes) {
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
 
 async function main() {
     const start = performance.now();
@@ -24,68 +29,67 @@ async function main() {
 
     console.log(`Starting optimizer for ${repo} #${prNumber} on ${branch}`);
 
-    // 1) Read changed files list (produced by GitHub Actions) or compute fallback
-    const changedFilesPath = process.env.CHANGED_FILES_PATH || path.join(PROJECT_ROOT, 'changed-files.txt');
-    const changedImagesPath = process.env.CHANGED_IMAGES_PATH || path.join(PROJECT_ROOT, 'changed-images.json');
+  console.log('Scanning assets...');
+  const images = await scanAssets(PROJECT_ROOT, ASSET_FOLDERS);
 
-    const changedFiles = await changedFilesUtil.readChangedFiles(changedFilesPath);
-    const changedImages = await changedFilesUtil.readChangedImages(changedImagesPath, changedFiles, PROJECT_ROOT);
-
-    if (changedImages.length === 0) {
-        console.log('No changed image files detected. Exiting.');
-        await PRLog.create({ repoName: repo, prNumber, branch, status: 'no-images', timestamps: { startedAt: new Date() } });
-        process.exit(0);
-    }
-
-    // 2) Optimize images
-    const optimizedResults = [];
-    for (const imgPath of changedImages) {
-        try {
-            const res = await optimizeImages.processImage(imgPath, { quality: 80, maxWidth: 1920 });
-            optimizedResults.push(res);
-        } catch (err) {
-            console.error('Image optimization failed for', imgPath, err.message);
-        }
-    }
-
-    // 3) Replace references in code files safely
-    const codeFileExts = ['.js', '.jsx', '.tsx', '.html', '.css', '.vue'];
-    const replacements = optimizedResults.map(r => ({ from: path.basename(r.original), to: path.basename(r.converted) }));
-    await replaceReferences.runReplace(PROJECT_ROOT, replacements, codeFileExts);
-
-    // 4) Commit & push changes back to PR branch
-    try {
-        await gitHelper.commitAndPushChanges(PROJECT_ROOT, process.env.GITHUB_TOKEN, branch, `chore: optimize images for PR #${prNumber}`);
-    } catch (err) {
-        console.error('Git commit/push failed:', err.message);
-    }
-
-    // 5) Calculate stats and persist to MongoDB
-    const stats = await calculateStats.fromResults(optimizedResults);
-    const prRecord = await PRLog.create({
-        repoName: repo,
-        prNumber,
-        branch,
-        optimizedFiles: optimizedResults.map(r => r.converted),
-        totalImages: changedImages.length,
-        optimizedImages: optimizedResults.length,
-        originalSizeMB: stats.originalMB,
-        optimizedSizeMB: stats.optimizedMB,
-        savedMB: stats.savedMB,
-        processingTime: (performance.now() - start) / 1000,
-        status: 'completed',
-        timestamps: { startedAt: new Date(), finishedAt: new Date() }
+  if (images.length === 0) {
+    console.log('No supported image assets found. Nothing to optimize.');
+    await PRLog.create({
+      repoName: repo,
+      prNumber: String(prNumber),
+      branch,
+      totalImagesOptimized: 0,
+      totalOriginalSize: 0,
+      totalOptimizedSize: 0,
+      totalSavedBytes: 0,
+      optimizedFiles: [],
+      status: 'no-images',
+      optimizationTimestamp: new Date()
     });
-
-    // 6) Comment on PR
-    try {
-        await commentPR.commentOnPR(process.env.GITHUB_TOKEN, repo, prNumber, optimizedResults, stats);
-    } catch (err) {
-        console.error('Failed to post PR comment:', err.message);
-    }
-
-    console.log(`Optimization complete. Saved ${stats.savedMB.toFixed(2)} MB across ${optimizedResults.length} files.`);
     process.exit(0);
+  }
+
+  const optimizedResults = [];
+  for (const imagePath of images) {
+    const relativePath = path.relative(PROJECT_ROOT, imagePath);
+    console.log(`Optimizing image: ${relativePath}`);
+
+    try {
+      const result = await processImage(imagePath, { quality: 80, maxWidth: 1920 });
+      optimizedResults.push(result);
+      console.log(`✅ Converted ${relativePath} → ${path.relative(PROJECT_ROOT, result.converted)} (${formatBytes(result.originalSize)} → ${formatBytes(result.optimizedSize)})`);
+    } catch (err) {
+      console.error('Image optimization failed for', relativePath, err.message);
+    }
+  }
+
+  console.log('Updating references...');
+  await replaceReferences.runReplace(
+    PROJECT_ROOT,
+    optimizedResults.map(item => ({ from: item.original, to: item.converted })),
+    CODE_FILE_EXTENSIONS
+  );
+
+  const stats = calculateStats.fromResults(optimizedResults);
+  const record = await PRLog.create({
+    repoName: repo,
+    prNumber: String(prNumber),
+    branch,
+    totalImagesOptimized: optimizedResults.length,
+    totalOriginalSize: stats.originalBytes,
+    totalOptimizedSize: stats.optimizedBytes,
+    totalSavedBytes: stats.savedBytes,
+    optimizedFiles: optimizedResults.map(item => path.relative(PROJECT_ROOT, item.converted).split(path.sep).join('/')),
+    status: 'completed',
+    optimizationTimestamp: new Date()
+  });
+
+  const durationSeconds = ((performance.now() - start) / 1000).toFixed(2);
+
+  console.log(`Saved ${formatBytes(stats.savedBytes)} across ${optimizedResults.length} file(s)`);
+  console.log(`MongoDB analytics saved: ${record._id}`);
+  console.log(`Optimization completed in ${durationSeconds} seconds`);
+  process.exit(0);
 }
 
 main().catch(err => {
