@@ -1,17 +1,16 @@
-# Use a lightweight Node.js environment
 FROM node:18-slim
 
-# Set the working directory inside the container
+# Install build dependencies (sometimes needed for 'sharp' on slim images)
+RUN apt-get update && apt-get install -y libvips-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy the package.json files first (this caches dependencies to make builds faster)
+# Copy dependency files first for better caching
 COPY package*.json ./
+RUN npm install --omit=dev
 
-# Install the dependencies (like 'sharp') inside the container
-RUN npm install
+# Copy the entire optimizer folder contents
+COPY . .
 
-# Copy your actual optimization script
-COPY optimize.js ./
-
-# Tell the container what to do when it starts
+# Ensure the container knows where to find the script
 CMD ["node", "optimize.js"]
