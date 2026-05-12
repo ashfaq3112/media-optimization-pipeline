@@ -46,17 +46,11 @@ spec:
         - name: REPO_NAME
           value: "${REPO_NAME}"
 
-        - name: GITHUB_TOKEN
-          value: "${GITHUB_TOKEN}"
-
         - name: WORKSPACE_PATH
           value: "/workspace"
 
-        - name: CHANGED_FILES_PATH
-          value: "/workspace/changed-files.txt"
-
-        - name: CHANGED_IMAGES_PATH
-          value: "/workspace/changed-images.json"
+        - name: ASSET_FOLDERS
+          value: "sample-project/assets,public,static,assets"
 
         - name: MONGO_URI
           valueFrom:

@@ -7,11 +7,16 @@ const PRLogSchema = new mongoose.Schema({
   optimizedFiles: [String],
   totalImages: Number,
   optimizedImages: Number,
+  totalImagesOptimized: Number,
+  totalOriginalSize: Number,
+  totalOptimizedSize: Number,
+  totalSavedBytes: Number,
   originalSizeMB: Number,
   optimizedSizeMB: Number,
   savedMB: Number,
   processingTime: Number,
   status: String,
+  optimizationTimestamp: Date,
   timestamps: {
     startedAt: Date,
     finishedAt: Date

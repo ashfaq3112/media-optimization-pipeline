@@ -1,18 +1,15 @@
 {
   "name": "media-optimizer",
   "version": "1.0.0",
-  "description": "Core engine to compress and convert images to WebP",
+  "description": "Core engine to scan media assets, convert images to WebP, update references, and log analytics.",
   "main": "optimize.js",
   "scripts": {
     "start": "node optimize.js"
   },
   "dependencies": {
-    "@octokit/rest": "^19.0.0",
-    "axios": "^1.4.0",
     "dotenv": "^16.0.0",
     "fast-glob": "^3.2.7",
     "mongoose": "^7.0.0",
-    "sharp": "^0.32.6",
-    "simple-git": "^3.16.0"
+    "sharp": "^0.32.6"
   }
 }
