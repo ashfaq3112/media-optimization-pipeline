@@ -11,8 +11,8 @@ const updateReferences = require('./utils/replacer');
 // CONFIGURATION
 // Added common frontend paths in case you move your images inside 'src' later
 const ASSET_DIRS = ['public', 'static', 'frontend/public', 'frontend/src/assets']; 
-const PROJECT_ROOT = '/app'; // Mounted path in Kubernetes
-
+// Use the local .env path if it exists, otherwise default to the Kubernetes /app path
+const PROJECT_ROOT = process.env.PROJECT_ROOT || '/app';
 async function runOptimization() {
     const start = Date.now();
     await connectDB();

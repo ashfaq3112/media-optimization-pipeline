@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const prLogSchema = new mongoose.Schema({
-    prNumber: Number,
+    prNumber: String,         // <--- CHANGE THIS FROM 'Number' TO 'String'
     repoName: String,
     optimizedImages: Number,
     savedMB: Number,
