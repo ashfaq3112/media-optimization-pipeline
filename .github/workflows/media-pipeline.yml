@@ -1,5 +1,6 @@
 name: Media Optimization Pipeline
 
+# 1. THE TRIGGER: Only runs when images are added/changed in a PR
 on:
   pull_request:
     paths:
@@ -9,44 +10,43 @@ on:
 
 jobs:
   optimize-assets:
+    # Uses your local Ubuntu laptop/runner
     runs-on: self-hosted 
     
     steps:
-      # Step 1: Checkout with full history so we can push changes back
+      # Step 1: Download the code from the Pull Request branch
       - name: Checkout Repository
         uses: actions/checkout@v3
-        with:
-          fetch-depth: 0 
-          token: ${{ secrets.GH_PAT }} # Use a PAT for write access
 
-      # Step 2: Run the Kubernetes Job
+      # Step 2: Deploy the Job to Minikube
       - name: Deploy Kubernetes Job
-        env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          MONGO_URI: ${{ secrets.MONGO_URI }}
         run: |
-          # Inject PR_NUMBER and MONGO_URI into the YAML
-          envsubst < k8s/optimization-job.yaml | kubectl apply -f -
+          echo "🚀 Triggering Media Optimization Job in Kubernetes..."
+          # Safety: Delete any old job that didn't clean up properly
+          kubectl delete job media-optimizer-job --ignore-not-found
+          kubectl apply -f k8s/optimization-job.yaml
 
-      # Step 3: Wait and Audit
-      - name: Wait for Completion & Audit Logs
+      # Step 3: The Auditor - This catches "Silent Failures"
+      - name: Wait for Job Completion & Print Logs
         run: |
-          kubectl wait --for=condition=complete --timeout=180s job/media-optimizer-job
+          echo "⏳ Waiting for job to finish..."
+          kubectl wait --for=condition=complete --timeout=120s job/media-optimizer-job
+          
+          echo "📊 CAPTURING LOGS..."
+          # Store logs in a variable to check for errors
           JOB_LOGS=$(kubectl logs job/media-optimizer-job)
           echo "$JOB_LOGS"
-          if echo "$JOB_LOGS" | grep -q "Failed"; then exit 1; fi
+          
+          # If the logs contain the word 'Failed', manually kill the pipeline
+          if echo "$JOB_LOGS" | grep -q "Failed"; then
+            echo "❌ CRITICAL ERROR: Corrupted or invalid images detected in logs."
+            echo "Blocking merge to protect repository integrity."
+            exit 1
+          fi
 
-      # Step 4: THE MAGIC - Sync optimized files and code back to the PR
-      - name: Push Changes back to PR
-        if: success()
-        run: |
-          git config --global user.name "media-optimizer-bot"
-          git config --global user.email "bot@devops.ai"
-          git add .
-          # Only commit if there are actually changes
-          git diff --quiet && git diff --staged --quiet || (git commit -m "chore: automated webp conversion & ref updates" && git push origin HEAD:${{ github.head_ref }})
-
-      # Step 5: Cleanup
+      # Step 4: Cleanup (Runs even if Step 3 fails!)
       - name: Delete Job
         if: always()
-        run: kubectl delete job media-optimizer-job --ignore-not-forward
+        run: |
+          echo "🧹 Cleaning up Kubernetes resources..."
+          kubectl delete job media-optimizer-job
