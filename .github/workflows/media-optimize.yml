@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
 
   trigger-optimizer:
@@ -69,6 +73,27 @@ jobs:
             -o jsonpath="{.items[0].metadata.name}"
 
           kubectl logs -n media-opt $pod --tail=500
+
+      - name: Commit optimized assets
+        shell: powershell
+        run: |
+          git config --global user.name "media-optimizer-bot"
+          git config --global user.email "bot@mediaoptimizer.ai"
+
+          git add .
+
+          $changes = git diff --cached --name-only
+
+          if (-not $changes) {
+            Write-Host "No optimization changes to commit"
+          }
+          else {
+            git commit -m "auto optimize images to webp"
+
+            git push
+
+            Write-Host "Optimized assets pushed successfully"
+          }
 
       - name: Cleanup Kubernetes Job
         if: always()
