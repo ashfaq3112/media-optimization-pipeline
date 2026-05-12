@@ -3,3 +3,9 @@ node_modules/
 minikube-linux-amd64
 actions-runner/
 actions-runner/
+dist/
+build/
+optimizer/node_modules/
+dashboard/backend/node_modules/
+dashboard/frontend/node_modules/
+k8s/optimization-job.yaml

@@ -1,0 +1,9 @@
+node_modules
+.git
+dashboard
+sample-project
+.github
+k8s
+coverage
+dist
+.env

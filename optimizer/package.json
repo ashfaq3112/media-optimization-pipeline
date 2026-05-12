@@ -7,6 +7,12 @@
     "start": "node optimize.js"
   },
   "dependencies": {
-    "sharp": "^0.32.6"
+    "@octokit/rest": "^19.0.0",
+    "axios": "^1.4.0",
+    "dotenv": "^16.0.0",
+    "fast-glob": "^3.2.7",
+    "mongoose": "^7.0.0",
+    "sharp": "^0.32.6",
+    "simple-git": "^3.16.0"
   }
 }

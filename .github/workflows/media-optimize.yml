@@ -1,0 +1,100 @@
+name: Media Optimize PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.jpeg'
+
+jobs:
+
+  trigger-optimizer:
+
+    runs-on: self-hosted
+
+    steps:
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR info
+        shell: powershell
+        run: |
+          echo "PR_NUMBER=${{ github.event.pull_request.number }}" >> $env:GITHUB_ENV
+          echo "BRANCH_NAME=${{ github.head_ref }}" >> $env:GITHUB_ENV
+          echo "REPO_NAME=${{ github.repository }}" >> $env:GITHUB_ENV
+
+      - name: Detect changed image files
+        shell: powershell
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+
+          git diff --name-only origin/${{ github.base_ref }}...HEAD `
+            | Out-File changed-files.txt
+
+          $images = Get-Content changed-files.txt | Select-String '\.(png|jpg|jpeg)$'
+
+          $images | ForEach-Object { $_.ToString() } `
+            | ConvertTo-Json `
+            | Out-File changed-images.json
+
+          echo "Changed image files:"
+          Get-Content changed-images.json
+
+      - name: Render Kubernetes Job Manifest
+        shell: powershell
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH_NAME: ${{ github.head_ref }}
+          REPO_NAME: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $content = Get-Content k8s/optimization-job.yaml.template -Raw
+
+          $content = $content.Replace('${PR_NUMBER}', $env:PR_NUMBER)
+          $content = $content.Replace('${BRANCH_NAME}', $env:BRANCH_NAME)
+          $content = $content.Replace('${REPO_NAME}', $env:REPO_NAME)
+          $content = $content.Replace('${GITHUB_TOKEN}', $env:GITHUB_TOKEN)
+
+          Set-Content k8s/optimization-job.yaml $content
+
+      - name: Delete old Kubernetes Job
+        shell: powershell
+        run: |
+          kubectl delete job media-optimize-job-${{ github.event.pull_request.number }} `
+            -n media-opt `
+            --ignore-not-found=true
+
+      - name: Apply Kubernetes Job
+        shell: powershell
+        run: |
+          kubectl apply -f k8s/optimization-job.yaml
+
+      - name: Wait for Job Completion
+        shell: powershell
+        run: |
+          kubectl wait `
+            --for=condition=complete `
+            --timeout=600s `
+            job/media-optimize-job-${{ github.event.pull_request.number }} `
+            -n media-opt
+
+      - name: Print Job Logs
+        shell: powershell
+        run: |
+          $pod = kubectl get pods `
+            -n media-opt `
+            -l job-name=media-optimize-job-${{ github.event.pull_request.number }} `
+            -o jsonpath="{.items[0].metadata.name}"
+
+          kubectl logs -n media-opt $pod --tail=500
+
+      - name: Cleanup Kubernetes Job
+        if: always()
+        shell: powershell
+        run: |
+          kubectl delete -f k8s/optimization-job.yaml --ignore-not-found=true
