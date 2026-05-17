@@ -5,12 +5,7 @@ metadata:
   name: media-optimize-job-${PR_NUMBER}
   namespace: media-opt
 
-  labels:
-    app: media-optimizer
-    pr: "${PR_NUMBER}"
-
 spec:
-
   backoffLimit: 0
 
   template:
@@ -21,51 +16,42 @@ spec:
         pr: "${PR_NUMBER}"
 
     spec:
-
       restartPolicy: Never
 
       containers:
 
-      - name: optimizer
+        - name: optimizer
+          image: media-optimizer:latest
+          imagePullPolicy: Never
 
-        image: media-optimizer:latest
+          env:
 
-        imagePullPolicy: Never
+            - name: PR_NUMBER
+              value: "${PR_NUMBER}"
 
-        env:
+            - name: BRANCH_NAME
+              value: "${BRANCH_NAME}"
 
-        - name: NODE_ENV
-          value: production
+            - name: REPO_NAME
+              value: "${REPO_NAME}"
 
-        - name: PR_NUMBER
-          value: "${PR_NUMBER}"
+            - name: WORKSPACE_PATH
+              value: "/workspace"
 
-        - name: BRANCH_NAME
-          value: "${BRANCH_NAME}"
+            - name: ASSET_FOLDERS
+              value: "sample-project/assets,public,static,assets"
 
-        - name: REPO_NAME
-          value: "${REPO_NAME}"
+            - name: MONGO_URI
+              value: "mongodb://mongo:27017/media-optimizer"
 
-        - name: WORKSPACE_PATH
-          value: "/workspace"
+          volumeMounts:
 
-        - name: ASSET_FOLDERS
-          value: "sample-project/assets,public,static,assets"
-
-        - name: MONGO_URI
-          valueFrom:
-            secretKeyRef:
-              name: media-opt-secrets
-              key: mongoUri
-
-        volumeMounts:
-
-        - name: workspace-volume
-          mountPath: /workspace
+            - name: workspace-volume
+              mountPath: /workspace
 
       volumes:
 
-      - name: workspace-volume
-        hostPath:
-          path: "/workspace"
-          type: Directory
+        - name: workspace-volume
+          hostPath:
+            path: /home/runner/_work/media-optimization-pipeline/media-optimization-pipeline
+            type: Directory
